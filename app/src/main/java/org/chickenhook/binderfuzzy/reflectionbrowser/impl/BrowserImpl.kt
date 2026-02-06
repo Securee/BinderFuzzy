@@ -36,33 +36,50 @@ class BrowserImpl {
         }
 
         /**
-         * Return a list of all available services.
+         * Return a map of all available services via ServiceManager (Name -> Proxy).
          */
-        fun getServiceInstances(context: Context): ArrayList<Any> {
-            val serviceList = ArrayList<Any>()
-            Context::class.java.declaredFields.forEach {
-                it.isAccessible = true
-                val value = it.get(null)
-                value?.let {
-                    if (it is String) {
+        fun getServiceInstances(context: Context): HashMap<String, Any> {
+            val serviceMap = HashMap<String, Any>()
+            try {
+                // 1. Get ServiceManager class
+                val serviceManagerClass = Class.forName("android.os.ServiceManager")
+                
+                // 2. Call listServices()
+                val listServicesMethod = serviceManagerClass.getMethod("listServices")
+                val services = listServicesMethod.invoke(null) as Array<String>
+                
+                // 3. Iterate services
+                val getServiceMethod = serviceManagerClass.getMethod("getService", String::class.java)
+                
+                for (serviceName in services) {
+                    try {
+                        // 4. Get IBinder
+                        val binder = getServiceMethod.invoke(null, serviceName) as? android.os.IBinder ?: continue
+                        
+                        // 5. Get Interface Descriptor
+                        val descriptor = binder.interfaceDescriptor ?: continue
+                        
+                        // 6. Try to find the Stub class and call asInterface
                         try {
-                            val service = context.getSystemService(it)
-                            serviceList.add(service)
-                        } catch (exception: Exception) {
-                            Log.e(TAG, "Error while fetch service ", exception)
+                            val stubClassName = "${descriptor}\$Stub"
+                            val stubClass = Class.forName(stubClassName)
+                            val asInterfaceMethod = stubClass.getMethod("asInterface", android.os.IBinder::class.java)
+                            val proxy = asInterfaceMethod.invoke(null, binder)
+                            if (proxy != null) {
+                                serviceMap[serviceName] = proxy
+                            }
+                        } catch (e: Exception) {
+                            // Log.w(TAG, "Could not resolve Stub for $serviceName ($descriptor)", e)
                         }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error processing service: $serviceName", e)
                     }
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error listing services via ServiceManager", e)
             }
-            serviceList.add(context.packageManager)
-            val activityThreadClass = Class.forName("android.app.ActivityThread")
-            val sCurrentActivityThread =
-                activityThreadClass.getDeclaredField("sCurrentActivityThread")
-            sCurrentActivityThread.isAccessible = true
-            sCurrentActivityThread.get(null)?.let {
-                serviceList.add(it)
-            }
-            return serviceList
+            
+            return serviceMap
         }
 
         fun getService(context: Context, serviceClass: Class<Any>): Any? {
@@ -110,14 +127,46 @@ class BrowserImpl {
          */
         private fun getMembersIncludingSuper(clazz: Class<out Any>): ArrayList<Member> {
             val members = ArrayList<Member>()
-            members.addAll(clazz.declaredFields)
-            members.addAll(clazz.fields)
-            members.addAll(clazz.methods)
-            members.addAll(clazz.declaredMethods)
+            // members.addAll(clazz.declaredFields) // Exclude fields
+            // members.addAll(clazz.fields) // Exclude fields
+
+            // Add methods, but exclude java.lang.Object methods
+            val allMethods = ArrayList<java.lang.reflect.Method>()
+            allMethods.addAll(clazz.methods)
+            allMethods.addAll(clazz.declaredMethods)
+
+            allMethods.forEach { method ->
+                if (method.declaringClass.name != "java.lang.Object") {
+                    members.add(method)
+                }
+            }
+            
             clazz.superclass?.let {
                 members.addAll(getMembersIncludingSuper(it))
             }
             return members
+        }
+
+        fun logAllServices(context: Context) {
+            Thread {
+                Log.d(TAG, "Start enumerating services...")
+                val servicesMap = getServiceInstances(context)
+                servicesMap.forEach { (name, service) ->
+                    try {
+                        val clazz = service::class.java
+                        Log.d(TAG, "Service: $name (${clazz.name})")
+                        getMembers(clazz).forEach { member ->
+                            if (member is java.lang.reflect.Method) {
+                                val params = member.parameterTypes.joinToString(", ") { it.name }
+                                Log.d(TAG, "  -> Method: ${member.name}($params)")
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error enumerating service: $name", e)
+                    }
+                }
+                Log.d(TAG, "Enumeration finished.")
+            }.start()
         }
 
         /**

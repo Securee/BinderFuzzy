@@ -14,6 +14,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        org.chickenhook.binderfuzzy.reflectionbrowser.impl.BrowserImpl.logAllServices(this)
         main_new?.setOnClickListener {
             val intent = Intent(this, ReflectionBrowser::class.java)
             startActivity(intent)

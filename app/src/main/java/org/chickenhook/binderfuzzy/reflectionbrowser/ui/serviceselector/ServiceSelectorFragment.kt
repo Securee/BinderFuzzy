@@ -46,21 +46,20 @@ class ServiceSelectorFragment : Fragment() {
         return view
     }
 
-    fun asItems(classes: ArrayList<Any>): ArrayList<ClassItem> {
+    fun asItems(classes: HashMap<String, Any>): ArrayList<ClassItem> {
         val itemList = ArrayList<ClassItem>()
-        classes.forEach {item->
-            item?.let {
-                itemList.add(
-                    ClassItem(
-                        "",
-                        it::class.java.simpleName,
-                        it::class.java.name,
-                        it
-                    )
+        classes.forEach { (name, obj) ->
+            itemList.add(
+                ClassItem(
+                    "",
+                    name,
+                    obj::class.java.name,
+                    obj
                 )
-            }
+            )
         }
-        return itemList;
+        itemList.sortBy { it.content }
+        return itemList
     }
 
     override fun onAttach(context: Context) {
