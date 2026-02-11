@@ -12,3 +12,4 @@
 /captures
 .externalNativeBuild
 .cxx
+host_auditor/output/

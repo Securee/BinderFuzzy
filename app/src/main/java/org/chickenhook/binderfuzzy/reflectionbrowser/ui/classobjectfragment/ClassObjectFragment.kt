@@ -95,7 +95,7 @@ class ClassObjectFragment : Fragment() {
                 classMemberItem.add(
                     ClassMemberItem(
                         it::class.java.simpleName,
-                        it.toGenericString(),
+                        it.toGenericString().replace(it.declaringClass.name + ".", ""),
                         it::class.java.simpleName,
                         it,
                         obj
